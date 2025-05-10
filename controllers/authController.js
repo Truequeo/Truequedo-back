@@ -5,9 +5,9 @@ const { OAuth2Client } = require('google-auth-library');
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
-// Enviar OTP
+// Enviar SMS
 exports.enviarCodigo = async (req, res) => {
-  const phone = req.params.phone; // <-- Obtenido desde la URL
+  const phone = req.params.phone; 
   try {
     await twilioClient.verify.services(process.env.TWILIO_SERVICE_SID)
       .verifications.create({ to: phone, channel: 'sms' });
@@ -17,7 +17,7 @@ exports.enviarCodigo = async (req, res) => {
   }
 };
 
-// Verificar OTP
+// Verificar SMS
 exports.verificarCodigo = async (req, res) => {
   const { phone, code } = req.body;
   try {
