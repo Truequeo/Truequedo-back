@@ -137,8 +137,6 @@ const updateUsuario = async (req, res) => {
     if (!codusuario) {
       return res.status(400).json({ error: "Código de usuario requerido" });
     }
-
-    // Actualizar usuario
     const updateQuery = `
       UPDATE usuario
       SET
@@ -159,8 +157,6 @@ const updateUsuario = async (req, res) => {
     if (updateResult.rowCount === 0) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
-
-    // Obtener los datos completos
     const selectQuery = `
       SELECT 
         u.codusuario,
@@ -185,17 +181,12 @@ const updateUsuario = async (req, res) => {
       WHERE u.codusuario = $1;
     `;
     const selectResult = await pool.query(selectQuery, [codusuario]);
-
-    // Procesar resultado
     const rows = selectResult.rows;
-
     if (rows.length === 0) {
       return res
         .status(404)
         .json({ error: "Usuario no encontrado en detalle" });
     }
-
-    // Base del usuario
     const usuarioBase = {
       codusuario: rows[0].codusuario,
       nombreusuario: rows[0].nombreusuario,
@@ -208,8 +199,6 @@ const updateUsuario = async (req, res) => {
       articulos: [],
       ratings: [],
     };
-
-    // Agregar artículos únicos
     const articulosSet = new Set();
     for (const row of rows) {
       if (row.codarticulo && !articulosSet.has(row.codarticulo)) {
@@ -223,8 +212,6 @@ const updateUsuario = async (req, res) => {
         articulosSet.add(row.codarticulo);
       }
     }
-
-    // Agregar ratings únicos
     const ratingsSet = new Set();
     for (const row of rows) {
       const key = `${row.rating_comentario}-${row.rating_fecha}`;
@@ -237,7 +224,6 @@ const updateUsuario = async (req, res) => {
         ratingsSet.add(key);
       }
     }
-
     res.status(200).json({
       message: "Usuario actualizado",
       usuario: usuarioBase,
@@ -284,44 +270,3 @@ module.exports = {
   updateUsuario,
   createRating,
 };
-
-/*/ updateUsuario = async (req, res) => {
-  const { codusuario, nombreusuario, ubicacionarticulo } = req.body;
-
-  try {
-    // Obtener el usuario actual
-    const usuarioActual = await pool.query(
-      "SELECT fotoperfil FROM usuario WHERE codusuario = $1",
-      [codusuario]
-    );
-
-    if (usuarioActual.rowCount === 0) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
-    }
-
-    // Determinar URL final de la foto de perfil
-    const fotoperfil = req.file
-      ? `${req.protocol}://${req.get("host")}/uploads/user/${req.file.filename}`
-      : usuarioActual.rows[0].fotoperfil; // Mantener la foto actual si no se envió una nueva
-
-    const query = `
-      UPDATE usuario
-      SET nombreusuario = $1,
-          fotoperfil = $2,
-          ubicacionarticulo = $3
-      WHERE codusuario = $4
-      RETURNING *;
-    `;
-
-    const values = [nombreusuario, fotoperfil, ubicacionarticulo, codusuario];
-    const result = await pool.query(query, values);
-
-    res.status(200).json({
-      message: "Usuario actualizado",
-      usuario: result.rows[0],
-    });
-  } catch (error) {
-    console.error("Error al actualizar usuario:", error);
-    res.status(500).json({ error: "Error al actualizar usuario" });
-  }
-};*/

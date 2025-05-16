@@ -2,10 +2,19 @@ const { pool } = require("../connections/database");
 
 const getArticulo = async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM articulo");
+    const { codusuario } = req.params;
+    let result;
+    if (codusuario) {
+      result = await pool.query(
+        "SELECT * FROM articulo WHERE codusuario != $1",
+        [codusuario]
+      );
+    } else {
+      result = await pool.query("SELECT * FROM articulo");
+    }
     res.json(result.rows);
   } catch (error) {
-    console.error("Error al obtener usuarios:", error);
+    console.error("Error al obtener artículos:", error);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 };
@@ -19,16 +28,14 @@ const createArticulo = async (req, res) => {
     estadoarticulo,
     categorias = [],
   } = req.body;
-
   const client = await pool.connect();
-
   const filePath = req.file
-    ? `${req.protocol}://${req.get("host")}/uploads/articulo/${req.file.filename}`
+    ? `${req.protocol}://${req.get("host")}/uploads/articulo/${
+        req.file.filename
+      }`
     : null;
-
   try {
     await client.query("BEGIN");
-
     const articuloQuery = `
       INSERT INTO articulo (codarticulo, codusuario, nombrearticulo, detallearticulo, estadoarticulo, fotoarticulo)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -42,19 +49,14 @@ const createArticulo = async (req, res) => {
       estadoarticulo,
       filePath,
     ];
-
     await client.query(articuloQuery, articuloValues);
-
     for (const categoria of categorias) {
       await client.query(
         `INSERT INTO categorias (codarticulo, categoria) VALUES ($1, $2);`,
         [codarticulo, categoria]
       );
     }
-
     await client.query("COMMIT");
-
-    // 🔄 Obtener usuario actualizado
     const userResult = await client.query(
       `
       SELECT 
@@ -81,9 +83,7 @@ const createArticulo = async (req, res) => {
       `,
       [codusuario]
     );
-
     const userRow = userResult.rows[0];
-
     const usuario = {
       codusuario: userRow.codusuario,
       nombreusuario: userRow.nombreusuario,
@@ -96,10 +96,8 @@ const createArticulo = async (req, res) => {
       articulos: [],
       ratings: [],
     };
-
     const articulosMap = new Map();
     const ratingsSet = new Set();
-
     userResult.rows.forEach((row) => {
       if (row.codarticulo && !articulosMap.has(row.codarticulo)) {
         articulosMap.set(row.codarticulo, {
@@ -122,10 +120,7 @@ const createArticulo = async (req, res) => {
         }
       }
     });
-
     usuario.articulos = Array.from(articulosMap.values());
-
-    // ✅ Retorna SOLO el objeto usuario actualizado (sin message, sin articulo individual)
     res.status(201).json(usuario);
   } catch (error) {
     await client.query("ROLLBACK");
@@ -138,17 +133,14 @@ const createArticulo = async (req, res) => {
 
 const getArticuloById = async (req, res) => {
   const { id } = req.params;
-
   try {
     const result = await pool.query(
       "SELECT * FROM articulo WHERE codarticulo = $1",
       [id]
     );
-
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "Articulo no encontrado" });
     }
-
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Error al obtener el articulo:", error);
@@ -210,9 +202,98 @@ const updateArticulo = async (req, res) => {
   }
 };
 
+async function obtenerArticuloConCategorias(codarticulo) {
+  const resArticulo = await pool.query(
+    "SELECT * FROM articulo WHERE codarticulo = $1",
+    [codarticulo]
+  );
+  const resCategorias = await pool.query(
+    "SELECT categoria FROM categorias WHERE codarticulo = $1",
+    [codarticulo]
+  );
+  if (resArticulo.rows.length === 0) return null;
+  const articulo = resArticulo.rows[0];
+  articulo.categorias = resCategorias.rows.map((c) => c.categoria);
+  return articulo;
+}
+
+async function obtenerTodosLosArticulos() {
+  const resArticulos = await pool.query("SELECT * FROM articulo");
+  const articulos = resArticulos.rows;
+  for (let articulo of articulos) {
+    const resCategorias = await pool.query(
+      "SELECT categoria FROM categorias WHERE codarticulo = $1",
+      [articulo.codarticulo]
+    );
+    articulo.categorias = resCategorias.rows.map((c) => c.categoria);
+  }
+  return articulos;
+}
+
+function calcularSimilitud(base, otro) {
+  let score = 0;
+  const palabrasBase = base.nombrearticulo.toLowerCase().split(/\s+/);
+  const palabrasOtro = otro.nombrearticulo.toLowerCase().split(/\s+/);
+  const comunes = palabrasBase.filter((p) => palabrasOtro.includes(p));
+  score += comunes.length;
+  const categoriasBase = new Set(base.categorias);
+  const categoriasOtro = new Set(otro.categorias);
+  const interseccion = [...categoriasBase].filter((cat) =>
+    categoriasOtro.has(cat)
+  );
+  const union = new Set([...categoriasBase, ...categoriasOtro]);
+  score += (interseccion.length / union.size) * 2;
+  score += similitudEstado(base.estadoarticulo, otro.estadoarticulo);
+  return score;
+}
+
+function similitudEstado(e1, e2) {
+  const mapa = {
+    Nuevo: { Nuevo: 1, Seminuevo: 0.7, Viejo: 0.3 },
+    Seminuevo: { Nuevo: 0.7, Seminuevo: 1, Viejo: 0.6 },
+    Viejo: { Nuevo: 0.3, Seminuevo: 0.6, Viejo: 1 },
+  };
+  return mapa[e1]?.[e2] || 0;
+}
+
+async function recomendarArticulos(codarticulo, topN = 5) {
+  const base = await obtenerArticuloConCategorias(codarticulo);
+  if (!base) return [];
+  const todos = await obtenerTodosLosArticulos();
+  const recomendaciones = [];
+  for (let art of todos) {
+    if (art.codarticulo === codarticulo) continue;
+    const similitud = calcularSimilitud(base, art);
+    recomendaciones.push({ ...art, similitud });
+  }
+  recomendaciones.sort((a, b) => b.similitud - a.similitud);
+  return recomendaciones.slice(0, topN);
+}
+
+const getArticuloRecomendado = async (req, res) => {
+  try {
+    const { codarticulo } = req.params;
+    const recomendaciones = await recomendarArticulos(codarticulo);
+    const resultado = recomendaciones.map((art) => ({
+      codarticulo: art.codarticulo,
+      codusuario: art.codusuario,
+      nombrearticulo: art.nombrearticulo,
+      detallearticulo: art.detallearticulo,
+      estadoarticulo: art.estadoarticulo,
+      fotoarticulo: art.fotoarticulo,
+      similitud: art.similitud,
+    }));
+    res.json(resultado);
+  } catch (error) {
+    console.error("Error recomendando artículos:", error);
+    res.status(500).json([]);
+  }
+};
+
 module.exports = {
   getArticulo,
   createArticulo,
   getArticuloById,
   updateArticulo,
+  getArticuloRecomendado,
 };
