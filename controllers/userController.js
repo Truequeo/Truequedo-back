@@ -52,7 +52,8 @@ const createUsuario = async (req, res) => {
 const getUsuarioById = async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query(`
+    const result = await pool.query(
+      `
       SELECT 
         u.codusuario,
         u.nombreusuario,
@@ -74,7 +75,9 @@ const getUsuarioById = async (req, res) => {
       LEFT JOIN articulo a ON u.codusuario = a.codusuario
       LEFT JOIN rating r ON u.codusuario = r.codusuario
       WHERE u.codusuario = $1
-    `, [id]);
+    `,
+      [id]
+    );
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "Usuario no encontrado" });
     }
@@ -89,18 +92,18 @@ const getUsuarioById = async (req, res) => {
       fechanacimiento: userRow.fechanacimiento,
       ratingusuario: userRow.ratingusuario,
       articulos: [],
-      ratings: []
+      ratings: [],
     };
     const articulosMap = new Map();
     const ratingsSet = new Set();
-    result.rows.forEach(row => {
+    result.rows.forEach((row) => {
       if (row.codarticulo && !articulosMap.has(row.codarticulo)) {
         articulosMap.set(row.codarticulo, {
           codarticulo: row.codarticulo,
           nombrearticulo: row.nombrearticulo,
           detallearticulo: row.detallearticulo,
           estadoarticulo: row.estadoarticulo,
-          fotoarticulo: row.fotoarticulo
+          fotoarticulo: row.fotoarticulo,
         });
       }
       if (row.rating_comentario && row.rating_calificacion) {
@@ -109,7 +112,7 @@ const getUsuarioById = async (req, res) => {
           usuario.ratings.push({
             comentario: row.rating_comentario,
             calificacion: row.rating_calificacion,
-            fecha: row.rating_fecha
+            fecha: row.rating_fecha,
           });
           ratingsSet.add(key);
         }
@@ -124,16 +127,19 @@ const getUsuarioById = async (req, res) => {
 };
 
 const updateUsuario = async (req, res) => {
-  const {
-    codusuario,
-    nombreusuario,
-    ubicacionarticulo,
-  } = req.body;
+  const { codusuario, nombreusuario, ubicacionarticulo } = req.body;
+
   const fotoperfil = req.file
     ? `${req.protocol}://${req.get("host")}/uploads/user/${req.file.filename}`
-    : req.body.fotoperfil; 
+    : req.body.fotoperfil;
+
   try {
-    const query = `
+    if (!codusuario) {
+      return res.status(400).json({ error: "Código de usuario requerido" });
+    }
+
+    // Actualizar usuario
+    const updateQuery = `
       UPDATE usuario
       SET
         nombreusuario = $1,
@@ -142,26 +148,105 @@ const updateUsuario = async (req, res) => {
       WHERE codusuario = $4
       RETURNING *;
     `;
-    const values = [
+    const updateValues = [
       nombreusuario,
       fotoperfil,
       ubicacionarticulo,
       codusuario,
     ];
-    const result = await pool.query(query, values);
-    if (result.rowCount === 0) {
+    const updateResult = await pool.query(updateQuery, updateValues);
+
+    if (updateResult.rowCount === 0) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
+
+    // Obtener los datos completos
+    const selectQuery = `
+      SELECT 
+        u.codusuario,
+        u.nombreusuario,
+        u.celularusuario,
+        u.fotoperfil,
+        u.estado,
+        u.ubicacionarticulo,
+        u.fechanacimiento,
+        u.ratingusuario,
+        a.codarticulo,
+        a.nombrearticulo,
+        a.detallearticulo,
+        a.estadoarticulo,
+        a.fotoarticulo,
+        r.comentario AS rating_comentario,
+        r.calificacion AS rating_calificacion,
+        r.fecha AS rating_fecha
+      FROM usuario u
+      LEFT JOIN articulo a ON u.codusuario = a.codusuario
+      LEFT JOIN rating r ON u.codusuario = r.codusuario
+      WHERE u.codusuario = $1;
+    `;
+    const selectResult = await pool.query(selectQuery, [codusuario]);
+
+    // Procesar resultado
+    const rows = selectResult.rows;
+
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "Usuario no encontrado en detalle" });
+    }
+
+    // Base del usuario
+    const usuarioBase = {
+      codusuario: rows[0].codusuario,
+      nombreusuario: rows[0].nombreusuario,
+      celularusuario: rows[0].celularusuario,
+      fotoperfil: rows[0].fotoperfil,
+      estado: rows[0].estado,
+      ubicacionarticulo: rows[0].ubicacionarticulo,
+      fechanacimiento: rows[0].fechanacimiento,
+      ratingusuario: rows[0].ratingusuario,
+      articulos: [],
+      ratings: [],
+    };
+
+    // Agregar artículos únicos
+    const articulosSet = new Set();
+    for (const row of rows) {
+      if (row.codarticulo && !articulosSet.has(row.codarticulo)) {
+        usuarioBase.articulos.push({
+          codarticulo: row.codarticulo,
+          nombrearticulo: row.nombrearticulo,
+          detallearticulo: row.detallearticulo,
+          estadoarticulo: row.estadoarticulo,
+          fotoarticulo: row.fotoarticulo,
+        });
+        articulosSet.add(row.codarticulo);
+      }
+    }
+
+    // Agregar ratings únicos
+    const ratingsSet = new Set();
+    for (const row of rows) {
+      const key = `${row.rating_comentario}-${row.rating_fecha}`;
+      if (row.rating_comentario && !ratingsSet.has(key)) {
+        usuarioBase.ratings.push({
+          comentario: row.rating_comentario,
+          calificacion: row.rating_calificacion,
+          fecha: row.rating_fecha,
+        });
+        ratingsSet.add(key);
+      }
+    }
+
     res.status(200).json({
       message: "Usuario actualizado",
-      usuario: result.rows[0],
+      usuario: usuarioBase,
     });
   } catch (error) {
     console.error("Error al actualizar usuario:", error);
     res.status(500).json({ error: "Error al actualizar usuario" });
   }
 };
-
 
 const createRating = async (req, res) => {
   const { codusuario, comentario, calificacion } = req.body;
@@ -199,3 +284,44 @@ module.exports = {
   updateUsuario,
   createRating,
 };
+
+/*/ updateUsuario = async (req, res) => {
+  const { codusuario, nombreusuario, ubicacionarticulo } = req.body;
+
+  try {
+    // Obtener el usuario actual
+    const usuarioActual = await pool.query(
+      "SELECT fotoperfil FROM usuario WHERE codusuario = $1",
+      [codusuario]
+    );
+
+    if (usuarioActual.rowCount === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Determinar URL final de la foto de perfil
+    const fotoperfil = req.file
+      ? `${req.protocol}://${req.get("host")}/uploads/user/${req.file.filename}`
+      : usuarioActual.rows[0].fotoperfil; // Mantener la foto actual si no se envió una nueva
+
+    const query = `
+      UPDATE usuario
+      SET nombreusuario = $1,
+          fotoperfil = $2,
+          ubicacionarticulo = $3
+      WHERE codusuario = $4
+      RETURNING *;
+    `;
+
+    const values = [nombreusuario, fotoperfil, ubicacionarticulo, codusuario];
+    const result = await pool.query(query, values);
+
+    res.status(200).json({
+      message: "Usuario actualizado",
+      usuario: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Error al actualizar usuario:", error);
+    res.status(500).json({ error: "Error al actualizar usuario" });
+  }
+};*/
