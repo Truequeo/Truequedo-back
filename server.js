@@ -6,6 +6,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const userRoute = require('./routes/user');
 const articuloRoute = require('./routes/articulo');
+const chatRoute = require('./routes/chats');
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use('/auth', authRoutes);
 app.use('/user', userRoute);
 app.use('/articulo', articuloRoute);
+app.use('/chat', chatRoute);
 app.use("/uploads", express.static("uploads"));
 
 const PORT = process.env.PORT || 3000;
