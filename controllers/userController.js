@@ -24,9 +24,10 @@ const createUsuario = async (req, res) => {
   const filePath = req.file
     ? `${req.protocol}://${req.get("host")}/uploads/user/${req.file.filename}`
     : null;
+
   try {
     const query = `
-      INSERT INTO usuario (codusuario, nombreusuario, celularusuario, fotoperfil, estado, ubicacionarticulo, fechanacimiento ,ratingusuario)
+      INSERT INTO usuario (codusuario, nombreusuario, celularusuario, fotoperfil, estado, ubicacionarticulo, fechanacimiento, ratingusuario)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 10)
       RETURNING *;
     `;
@@ -39,15 +40,36 @@ const createUsuario = async (req, res) => {
       ubicacionarticulo,
       fechanacimientousuario,
     ];
+
     const result = await pool.query(query, values);
     const usuario = result.rows[0];
+
+    const responseUsuario = {
+      articulos: [],
+      celularusuario: usuario.celularusuario,
+      codusuario: usuario.codusuario,
+      estado: usuario.estado,
+      fechanacimiento: usuario.fechanacimiento,
+      fotoperfil: usuario.fotoperfil,
+      nombreusuario: usuario.nombreusuario,
+      ratings: [],
+      ratingusuario: usuario.ratingusuario,
+      ubicacionarticulo: usuario.ubicacionarticulo,
+    };
+
     const token = jwt.sign({ celularusuario }, process.env.JWT_SECRET);
-    res.status(201).json({ message: "Usuario creado", usuario, token });
+
+    res.status(201).json({
+      message: "Usuario creado",
+      usuario: responseUsuario,
+      token,
+    });
   } catch (error) {
     console.error("Error al crear usuario:", error);
     res.status(500).json({ error: "Error al crear usuario" });
   }
 };
+
 
 const getUsuarioById = async (req, res) => {
   const { id } = req.params;
