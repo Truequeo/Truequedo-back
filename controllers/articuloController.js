@@ -1,21 +1,105 @@
 const { pool } = require("../connections/database");
 
+const fs = require("fs");
+const path = require("path");
+
 const getArticulo = async (req, res) => {
   try {
     const { codusuario } = req.params;
+    const offset = parseInt(req.query.offset) || 0;
+    const limit = parseInt(req.query.limit) || 10;
     let result;
+
     if (codusuario) {
       result = await pool.query(
-        "SELECT * FROM articulo WHERE codusuario != $1",
-        [codusuario]
+        "SELECT * FROM articulo WHERE codusuario != $1 ORDER BY codarticulo DESC OFFSET $2 LIMIT $3",
+        [codusuario, offset, limit]
       );
     } else {
-      result = await pool.query("SELECT * FROM articulo");
+      result = await pool.query(
+        "SELECT * FROM articulo ORDER BY codarticulo DESC OFFSET $1 LIMIT $2",
+        [offset, limit]
+      );
     }
-    res.json(result.rows);
+
+    const articulosConCantidad = result.rows.map((articulo) => {
+      const codarticulo = articulo.codarticulo;
+      const articuloPath = path.join(
+        __dirname,
+        "../uploads/articulo",
+        codarticulo.toString()
+      );
+
+      let cantidadImagenes = 0;
+      if (fs.existsSync(articuloPath)) {
+        const files = fs.readdirSync(articuloPath);
+        cantidadImagenes = files.length;
+      }
+
+      return {
+        ...articulo,
+        cantidadImagenes,
+      };
+    });
+
+    res.json(articulosConCantidad);
   } catch (error) {
     console.error("Error al obtener artículos:", error);
     res.status(500).json({ error: "Error interno del servidor" });
+  }
+};
+
+const getArticulosCercanos = async (req, res) => {
+  const { lat, lon, codusuario } = req.query;
+  const offset = parseInt(req.query.offset) || 0;
+  const limit = parseInt(req.query.limit) || 10;
+
+  if (!lat || !lon || !codusuario) {
+    return res
+      .status(400)
+      .json({ error: "Faltan parámetros: lat, lon o codusuario" });
+  }
+
+  try {
+    const query = `
+      SELECT 
+        a.*, 
+        u.ubicacionarticulo,
+        ST_Distance(u.ubicacionarticulo, ST_SetSRID(ST_MakePoint($1, $2), 4326)) AS distancia
+      FROM articulo a
+      JOIN usuario u ON a.codusuario = u.codusuario
+      WHERE a.codusuario != $3
+      ORDER BY distancia ASC
+      LIMIT $4 OFFSET $5;
+    `;
+    const values = [lon, lat, codusuario, limit, offset];
+
+    const result = await pool.query(query, values);
+
+    const articulosConCantidad = result.rows.map((articulo) => {
+      const codarticulo = articulo.codarticulo;
+      const articuloPath = path.join(
+        __dirname,
+        "../uploads/articulo",
+        codarticulo.toString()
+      );
+
+      let cantidadImagenes = 0;
+      if (fs.existsSync(articuloPath)) {
+        const files = fs.readdirSync(articuloPath);
+        cantidadImagenes = files.length;
+      }
+
+      return {
+        ...articulo,
+        cantidadImagenes,
+      };
+    });
+
+    res.json(articulosConCantidad);
+  } catch (error) {
+    console.error("Error al obtener artículos cercanos:", error);
+    res.status(500).json({ error: "Error al obtener artículos cercanos" });
   }
 };
 
@@ -29,10 +113,8 @@ const createArticulo = async (req, res) => {
     categorias = [],
   } = req.body;
   const client = await pool.connect();
-  const filePath = req.file
-    ? `${req.protocol}://${req.get("host")}/uploads/articulo/${
-        req.file.filename
-      }`
+  const folderPath = req.files?.length
+    ? `${req.protocol}://${req.get("host")}/uploads/articulo/${codarticulo}`
     : null;
   try {
     await client.query("BEGIN");
@@ -47,7 +129,7 @@ const createArticulo = async (req, res) => {
       nombrearticulo,
       detallearticulo,
       estadoarticulo,
-      filePath,
+      folderPath,
     ];
     await client.query(articuloQuery, articuloValues);
     for (const categoria of categorias) {
@@ -283,7 +365,27 @@ const getArticuloRecomendado = async (req, res) => {
       fotoarticulo: art.fotoarticulo,
       similitud: art.similitud,
     }));
-    res.json(resultado);
+    const articulosConCantidad = resultado.map((articulo) => {
+      const codarticulo = articulo.codarticulo;
+      const articuloPath = path.join(
+        __dirname,
+        "../uploads/articulo",
+        codarticulo.toString()
+      );
+
+      let cantidadImagenes = 0;
+      if (fs.existsSync(articuloPath)) {
+        const files = fs.readdirSync(articuloPath);
+        cantidadImagenes = files.length;
+      }
+
+      return {
+        ...articulo,
+        cantidadImagenes,
+      };
+    });
+
+    res.json(articulosConCantidad);
   } catch (error) {
     console.error("Error recomendando artículos:", error);
     res.status(500).json([]);
@@ -296,4 +398,5 @@ module.exports = {
   getArticuloById,
   updateArticulo,
   getArticuloRecomendado,
+  getArticulosCercanos,
 };

@@ -10,6 +10,7 @@ const getUsuarios = async (req, res) => {
     res.status(500).json({ error: "Error interno del servidor" });
   }
 };
+
 const path = require("path");
 
 const createUsuario = async (req, res) => {
@@ -17,7 +18,7 @@ const createUsuario = async (req, res) => {
     codusuario,
     nombreusuario,
     celularusuario,
-    ubicacionarticulo,
+    ubicacionarticulo, // espera "lat,long"
     fechanacimientousuario,
   } = req.body;
 
@@ -26,42 +27,39 @@ const createUsuario = async (req, res) => {
     : null;
 
   try {
+    const [lat, lon] = ubicacionarticulo.split(",").map(Number);
+
     const query = `
-      INSERT INTO usuario (codusuario, nombreusuario, celularusuario, fotoperfil, estado, ubicacionarticulo, fechanacimiento, ratingusuario)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 10)
+      INSERT INTO usuario (
+        codusuario, nombreusuario, celularusuario, fotoperfil, estado,
+        ubicacionarticulo, fechanacimiento, ratingusuario
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        ST_SetSRID(ST_MakePoint($6, $7), 4326), $8, 10
+      )
       RETURNING *;
     `;
+
     const values = [
       codusuario,
       nombreusuario,
       celularusuario,
       filePath,
       "activo",
-      ubicacionarticulo,
+      lon, // ⚠️ longitud primero
+      lat, // ⚠️ latitud después
       fechanacimientousuario,
     ];
 
     const result = await pool.query(query, values);
     const usuario = result.rows[0];
 
-    const responseUsuario = {
-      articulos: [],
-      celularusuario: usuario.celularusuario,
-      codusuario: usuario.codusuario,
-      estado: usuario.estado,
-      fechanacimiento: usuario.fechanacimiento,
-      fotoperfil: usuario.fotoperfil,
-      nombreusuario: usuario.nombreusuario,
-      ratings: [],
-      ratingusuario: usuario.ratingusuario,
-      ubicacionarticulo: usuario.ubicacionarticulo,
-    };
-
     const token = jwt.sign({ celularusuario }, process.env.JWT_SECRET);
 
     res.status(201).json({
       message: "Usuario creado",
-      usuario: responseUsuario,
+      usuario,
       token,
     });
   } catch (error) {
@@ -69,6 +67,7 @@ const createUsuario = async (req, res) => {
     res.status(500).json({ error: "Error al crear usuario" });
   }
 };
+
 
 
 const getUsuarioById = async (req, res) => {

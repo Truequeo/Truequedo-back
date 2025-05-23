@@ -9,13 +9,18 @@ if (!fs.existsSync(userUploadPath)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, userUploadPath); 
+    const codarticulo = req.body.codarticulo || "temp";
+    const dir = path.join(__dirname, "../uploads/articulo", codarticulo);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
   },
   filename: (req, file, cb) => {
+    const index = req.fileIndex || 0;
+    req.fileIndex = index + 1; 
     const ext = path.extname(file.originalname);
-    const codusuario = req.body.codarticulo || "imagen_" + Date.now();
-    const fileName = `${codusuario}${ext}`;
-    cb(null, fileName);
+    cb(null, `${req.fileIndex}${ext}`);
   },
 });
 
