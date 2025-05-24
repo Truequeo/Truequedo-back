@@ -18,7 +18,7 @@ const createUsuario = async (req, res) => {
     codusuario,
     nombreusuario,
     celularusuario,
-    ubicacionarticulo, // espera "lat,long"
+    ubicacionarticulo,
     fechanacimientousuario,
   } = req.body;
 
@@ -47,13 +47,22 @@ const createUsuario = async (req, res) => {
       celularusuario,
       filePath,
       "activo",
-      lon, // ⚠️ longitud primero
-      lat, // ⚠️ latitud después
+      lon,
+      lat,
       fechanacimientousuario,
     ];
 
     const result = await pool.query(query, values);
     const usuario = result.rows[0];
+
+    const intereses = JSON.parse(req.body.intereses || "[]"); // Asegura que sea un array real
+
+    for (const interes of intereses) {
+      await pool.query(
+        `INSERT INTO interes_usuario (codusuario, interes) VALUES ($1, $2)`,
+        [codusuario, interes]
+      );
+    }
 
     const token = jwt.sign({ celularusuario }, process.env.JWT_SECRET);
 
@@ -67,8 +76,6 @@ const createUsuario = async (req, res) => {
     res.status(500).json({ error: "Error al crear usuario" });
   }
 };
-
-
 
 const getUsuarioById = async (req, res) => {
   const { id } = req.params;
