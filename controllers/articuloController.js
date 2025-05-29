@@ -8,19 +8,21 @@ const getArticulo = async (req, res) => {
     const { codusuario } = req.params;
     const offset = parseInt(req.query.offset) || 0;
     const limit = parseInt(req.query.limit) || 10;
-    let result;
 
-    if (codusuario) {
-      result = await pool.query(
-        "SELECT * FROM articulo WHERE codusuario != $1 ORDER BY codarticulo DESC OFFSET $2 LIMIT $3",
-        [codusuario, offset, limit]
-      );
-    } else {
-      result = await pool.query(
-        "SELECT * FROM articulo ORDER BY codarticulo DESC OFFSET $1 LIMIT $2",
-        [offset, limit]
-      );
-    }
+    const result = await pool.query(
+      `
+      SELECT a.*, COUNT(c.categoria) AS coincidencias
+      FROM articulo a
+      LEFT JOIN categorias c ON a.codarticulo = c.codarticulo
+      LEFT JOIN interes_usuario iu 
+        ON iu.interes = c.categoria AND iu.codusuario = $1
+      WHERE a.codusuario != $1
+      GROUP BY a.codarticulo
+      ORDER BY coincidencias DESC, a.codarticulo DESC
+      OFFSET $2 LIMIT $3
+      `,
+      [codusuario, offset, limit]
+    );
 
     const articulosConCantidad = result.rows.map((articulo) => {
       const codarticulo = articulo.codarticulo;
@@ -38,6 +40,7 @@ const getArticulo = async (req, res) => {
 
       return {
         ...articulo,
+        coincidencias: parseInt(articulo.coincidencias), // Aseguramos tipo numérico
         cantidadImagenes,
       };
     });
@@ -297,9 +300,18 @@ async function obtenerArticuloConCategorias(codarticulo) {
   return articulo;
 }
 
-async function obtenerTodosLosArticulos() {
-  const resArticulos = await pool.query("SELECT * FROM articulo");
+async function obtenerTodosLosArticulos(excluirCodUsuario = null) {
+  let query = "SELECT * FROM articulo";
+  let values = [];
+
+  if (excluirCodUsuario !== null) {
+    query += " WHERE codusuario != $1";
+    values.push(excluirCodUsuario);
+  }
+
+  const resArticulos = await pool.query(query, values);
   const articulos = resArticulos.rows;
+
   for (let articulo of articulos) {
     const resCategorias = await pool.query(
       "SELECT categoria FROM categorias WHERE codarticulo = $1",
@@ -307,6 +319,7 @@ async function obtenerTodosLosArticulos() {
     );
     articulo.categorias = resCategorias.rows.map((c) => c.categoria);
   }
+
   return articulos;
 }
 
@@ -336,16 +349,19 @@ function similitudEstado(e1, e2) {
   return mapa[e1]?.[e2] || 0;
 }
 
-async function recomendarArticulos(codarticulo, topN = 5) {
+async function recomendarArticulos(codarticulo, codusuario, topN = 5) {
   const base = await obtenerArticuloConCategorias(codarticulo);
   if (!base) return [];
-  const todos = await obtenerTodosLosArticulos();
+
+  const todos = await obtenerTodosLosArticulos(codusuario);
   const recomendaciones = [];
+
   for (let art of todos) {
     if (art.codarticulo === codarticulo) continue;
     const similitud = calcularSimilitud(base, art);
     recomendaciones.push({ ...art, similitud });
   }
+
   recomendaciones.sort((a, b) => b.similitud - a.similitud);
   return recomendaciones.slice(0, topN);
 }
@@ -353,7 +369,8 @@ async function recomendarArticulos(codarticulo, topN = 5) {
 const getArticuloRecomendado = async (req, res) => {
   try {
     const { codarticulo } = req.params;
-    const recomendaciones = await recomendarArticulos(codarticulo);
+    const { codusuario } = req.query; 
+    const recomendaciones = await recomendarArticulos(codarticulo, codusuario);
     const resultado = recomendaciones.map((art) => ({
       codarticulo: art.codarticulo,
       codusuario: art.codusuario,
