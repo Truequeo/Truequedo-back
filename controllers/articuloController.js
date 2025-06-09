@@ -113,17 +113,22 @@ const createArticulo = async (req, res) => {
     estadoarticulo,
     categorias = [],
   } = req.body;
+
   const client = await pool.connect();
+
   const folderPath = req.files?.length
     ? `${req.protocol}://${req.get("host")}/uploads/articulo/${codarticulo}`
     : null;
+
   try {
     await client.query("BEGIN");
+
     const articuloQuery = `
       INSERT INTO articulo (codarticulo, codusuario, nombrearticulo, detallearticulo, estadoarticulo, fotoarticulo)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *;
     `;
+
     const articuloValues = [
       codarticulo,
       codusuario,
@@ -132,14 +137,31 @@ const createArticulo = async (req, res) => {
       estadoarticulo,
       folderPath,
     ];
+
     await client.query(articuloQuery, articuloValues);
-    for (const categoria of categorias) {
+
+    let categoriasArray = [];
+
+    if (Array.isArray(categorias)) {
+      categoriasArray = categorias;
+    } else if (typeof categorias === "string") {
+      try {
+        const parsed = JSON.parse(categorias);
+        categoriasArray = Array.isArray(parsed) ? parsed : [parsed];
+      } catch (e) {
+        categoriasArray = [categorias];
+      }
+    }
+
+    for (const categoria of categoriasArray) {
       await client.query(
         `INSERT INTO categorias (codarticulo, categoria) VALUES ($1, $2);`,
         [codarticulo, categoria]
       );
     }
+
     await client.query("COMMIT");
+
     const userResult = await client.query(
       `
       SELECT 
@@ -166,7 +188,9 @@ const createArticulo = async (req, res) => {
       `,
       [codusuario]
     );
+
     const userRow = userResult.rows[0];
+
     const usuario = {
       codusuario: userRow.codusuario,
       nombreusuario: userRow.nombreusuario,
@@ -179,8 +203,10 @@ const createArticulo = async (req, res) => {
       articulos: [],
       ratings: [],
     };
+
     const articulosMap = new Map();
     const ratingsSet = new Set();
+
     userResult.rows.forEach((row) => {
       if (row.codarticulo && !articulosMap.has(row.codarticulo)) {
         articulosMap.set(row.codarticulo, {
@@ -203,7 +229,9 @@ const createArticulo = async (req, res) => {
         }
       }
     });
+
     usuario.articulos = Array.from(articulosMap.values());
+
     res.status(201).json(usuario);
   } catch (error) {
     await client.query("ROLLBACK");
@@ -213,6 +241,8 @@ const createArticulo = async (req, res) => {
     client.release();
   }
 };
+
+
 
 const getArticuloById = async (req, res) => {
   const { id } = req.params;

@@ -46,35 +46,39 @@ const obtenerChats = async (req, res) => {
     const resultado = await pool.query(
       `
       WITH ultimos_mensajes AS (
-  SELECT DISTINCT ON (
-    codarticulo,
-    LEAST(codremitente, codreceptor),
-    GREATEST(codremitente, codreceptor)
-  ) *
-  FROM mensaje
-  WHERE codremitente = $1 OR codreceptor = $1
-  ORDER BY 
-    codarticulo,
-    LEAST(codremitente, codreceptor),
-    GREATEST(codremitente, codreceptor),
-    fecha DESC
-)
-SELECT 
-  um.*,
-  u.nombreusuario,
-  u.fotoperfil,
-  CASE 
-    WHEN um.codremitente = $1 THEN um.codreceptor
-    ELSE um.codremitente
-  END AS codinterlocutor
-FROM ultimos_mensajes um
-JOIN usuario u 
-  ON u.codusuario = (
-    CASE 
-      WHEN um.codremitente = $1 THEN um.codreceptor
-      ELSE um.codremitente
-    END
-  );
+        SELECT DISTINCT ON (
+          codarticulo,
+          LEAST(codremitente, codreceptor),
+          GREATEST(codremitente, codreceptor)
+        ) *
+        FROM mensaje
+        WHERE codremitente = $1 OR codreceptor = $1
+        ORDER BY 
+          codarticulo,
+          LEAST(codremitente, codreceptor),
+          GREATEST(codremitente, codreceptor),
+          fecha DESC
+      )
+      SELECT 
+        um.*,
+        u.nombreusuario,
+        u.fotoperfil,
+        a.nombrearticulo,
+        a.fotoarticulo,
+        CASE 
+          WHEN um.codremitente = $1 THEN um.codreceptor
+          ELSE um.codremitente
+        END AS codinterlocutor
+      FROM ultimos_mensajes um
+      JOIN usuario u 
+        ON u.codusuario = (
+          CASE 
+            WHEN um.codremitente = $1 THEN um.codreceptor
+            ELSE um.codremitente
+          END
+        )
+      JOIN articulo a
+        ON a.codarticulo = um.codarticulo;
       `,
       [codusuario]
     );
@@ -85,8 +89,9 @@ JOIN usuario u
   }
 };
 
+
 module.exports = {
   obtenerMensajes,
   enviarChat,
-  obtenerChats
+  obtenerChats,
 };

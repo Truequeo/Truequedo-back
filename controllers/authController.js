@@ -15,9 +15,9 @@ exports.enviarCodigo = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Número no registrado' });
     }
-    await twilioClient.verify
+    /*await twilioClient.verify
       .services(process.env.TWILIO_SERVICE_SID)
-      .verifications.create({ to: phone, channel: 'sms' });
+      .verifications.create({ to: phone, channel: 'sms' });*/
     return res.json({ message: 'Código enviado' });
   } catch (err) {
     console.error('Error al enviar código:', err);
@@ -29,10 +29,10 @@ exports.enviarCodigo = async (req, res) => {
 exports.verificarCodigo = async (req, res) => {
   const { phone, code } = req.body;
   try {
-    const verification = await twilioClient.verify
+    /*const verification = await twilioClient.verify
       .services(process.env.TWILIO_SERVICE_SID)
       .verificationChecks.create({ to: phone, code });
-    if (verification.status === "approved") {
+    if (verification.status === "approved") {*/
       const query = "SELECT * FROM usuario WHERE celularusuario = $1 LIMIT 1";
       const result = await pool.query(query, [phone]);
       if (result.rows.length === 0) {
@@ -44,9 +44,9 @@ exports.verificarCodigo = async (req, res) => {
         token,
         usuario,
       });
-    } else {
+    /*} else {
       return res.status(401).json({ error: "Código incorrecto" });
-    }
+    }*/
   } catch (err) {
     console.error("Error en verificación:", err);
     res.status(500).json({ error: err.message });
