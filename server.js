@@ -9,7 +9,7 @@ const authRoutes = require('./routes/auth');
 const userRoute = require('./routes/user');
 const articuloRoute = require('./routes/articulo');
 const chatRoute = require('./routes/chats');
-
+const matchRoute = require('./routes/truequeo')
 const app = express();
 
 // Middlewares
@@ -22,6 +22,7 @@ app.use('/auth', authRoutes);
 app.use('/user', userRoute);
 app.use('/articulo', articuloRoute);
 app.use('/chat', chatRoute);
+app.use('/match', matchRoute);
 app.use("/uploads", express.static("uploads"));
 
 const io = new Server(server, {
