@@ -39,7 +39,7 @@ exports.verificarCodigo = async (req, res) => {
         return res.status(404).json({ error: "Usuario no encontrado" });
       }
       const usuario = result.rows[0];
-      const token = jwt.sign({ phone }, process.env.JWT_SECRET);
+      const token = jwt.sign({ phone }, "supersecretojwtkey");
       return res.json({
         token,
         usuario,
