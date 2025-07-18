@@ -17,6 +17,7 @@ const getArticulo = async (req, res) => {
       LEFT JOIN interes_usuario iu 
         ON iu.interes = c.categoria AND iu.codusuario = $1
       WHERE a.codusuario != $1
+      AND a.disponible = 'Disponible'
       GROUP BY a.codarticulo
       ORDER BY coincidencias DESC, a.codarticulo DESC
       OFFSET $2 LIMIT $3
@@ -70,6 +71,7 @@ const getArticulosCercanos = async (req, res) => {
       FROM articulo a
       JOIN usuario u ON a.codusuario = u.codusuario
       WHERE a.codusuario != $3
+      AND a.disponible = 'Disponible'
       ORDER BY distancia ASC
       LIMIT $4 OFFSET $5;
     `;
@@ -335,7 +337,7 @@ async function obtenerTodosLosArticulos(excluirCodUsuario = null) {
   let values = [];
 
   if (excluirCodUsuario !== null) {
-    query += " WHERE codusuario != $1";
+    query += " WHERE codusuario != $1 AND disponible = 'Disponible'";
     values.push(excluirCodUsuario);
   }
 
